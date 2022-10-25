@@ -3,8 +3,8 @@ import netmiko
 from netmiko import ConnectHandler
 
 ## Gather info ## You can remove comment, and select port manually.
-comport = "COM3"
-#comport = input("With what serial COM port are you connecting (e.g. COM1/com1): ").upper() ## Comment this if you chose COM port manuall.
+#comport = "COM3"
+comport = input("With what serial COM port are you connecting (e.g. COM1/com1): ").upper() ## Comment this if you chose COM port manuall.
 filename = input("Name of the config file without format .conf (It's added with code): ").lower()
 configfile = filename + ".conf"
 
