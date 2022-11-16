@@ -4,6 +4,9 @@ import netmiko
 from netmiko import ConnectHandler
 from decimal import *
 import time
+from paramiko.ssh_exception import AuthenticationException
+from netmiko import NetmikoAuthenticationException
+i = False
 
 ## Gather info ## You can remove comment, and select port manually.
 # comport = "COM?"
@@ -13,23 +16,49 @@ comport = input("With what serial COM port are you connecting (e.g. COM1/com1): 
 filename = input("Name of the config file without format .conf (It's added with code): ").lower()
 configfile = filename + ".conf"
 
-## Change Auth data ## You can enter UN/PW info here.
+def tryconn():
+    ## Device info for connection ##
+    device = {
+        "device_type": "cisco_ios_serial",
+        "username": unAuth,
+        "password": pwAuth,
+        "secret": "cisco",
+        "fast_cli": False,
+        "conn_timeout": 30.0,
+        "serial_settings": {
+            "baudrate": serial.Serial.BAUDRATES[12],  # 9600
+            "bytesize": serial.EIGHTBITS,
+            "parity": serial.PARITY_NONE,
+            "stopbits": serial.STOPBITS_ONE,
+            "port": comport,
+        },
+    }
+
+    global i
+    try:
+        ConnectHandler(**device)
+    except NetmikoAuthenticationException:
+        print("Wrong login data, try again.")
+    else:
+        print("Password should be correct.")
+        i = True
+
+## Change Auth data ## You can enter UN/PW info here. ##
 unAuth = ""
 pwAuth = ""
 
-## If you enter auth info manually then comment next section.
-# """"
-i = False
-while i == False:
+## If you enter auth info manually then comment next section. ##
+# """
+
+while i is False:
     changeAuth = input("Do you want to change authentication information? Default is without UN & PW. Yes/No ").lower()
-    print("If you enter wrong authentication information the script will crash and you will have to start over")
     if changeAuth == "yes" or changeAuth == "no":
         if changeAuth == "yes":
             unAuth = input("Username: ").lower()
             pwAuth = input("Password: ")
-            i = True
+            tryconn()
         else:
-            break
+            tryconn()
     else:
         print("Incorrect entry! Try again.")
 # """
@@ -91,11 +120,12 @@ vlandatcheck = conn.send_command("dir")
 redat = re.search(r'vlan\s*(\S+)', vlandatcheck)
 
 try:
-    vlandat = redat.group()
+    redat.group()
 except AttributeError:
     print("File vlan.dat doesn't exist.")
 else:
     vlandat = redat.group()
+
 ## If there is no username unAuth is false ##
 if unAuth:
     if vlandat == "vlan.dat":
@@ -127,6 +157,7 @@ pwAuth = ""
 ## Connect to device & enable ##
 print("Connecting...")
 conn = ConnectHandler(**device)
+print("Connected")
 if not conn.check_enable_mode():
     conn.enable()
 
@@ -177,4 +208,3 @@ print("Config is copied directly from the switch. You can check it in " + filena
 conn.disconnect()
 
 input()
-
