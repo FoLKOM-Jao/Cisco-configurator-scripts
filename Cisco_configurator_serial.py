@@ -1,12 +1,21 @@
 import re
 import serial
-import netmiko
 from netmiko import ConnectHandler
 from decimal import *
 import time
-from paramiko.ssh_exception import AuthenticationException
+import os
+import shutil
+import difflib
 from netmiko import NetmikoAuthenticationException
+# from paramiko.ssh_exception import AuthenticationException
+# from difflib import Differ
+# import netmiko
+# import sys
+# from pathlib import Path
+# import os.path
+
 i = False
+j = 1
 
 ## Gather info ## You can remove comment, and select port manually.
 # comport = "COM?"
@@ -63,6 +72,19 @@ while i is False:
         print("Incorrect entry! Try again.")
 # """
 
+## Option to save newly generated files to unique directory ##
+
+prefix_path = os.getcwd()
+prefix_path_case = prefix_path + "\\" + filename
+
+while os.path.exists(prefix_path_case):
+    new_filename = filename + str(j)
+    prefix_path_case = prefix_path + "\\" + new_filename
+    j = j + 1
+
+os.mkdir(prefix_path_case)
+save_files_to = prefix_path_case + "\\"
+
 ## Device info for connection ##
 device = {
     "device_type": "cisco_ios_serial",
@@ -87,32 +109,30 @@ print("Connected")
 if not conn.check_enable_mode():
     conn.enable()
 
+## Save old config ##
+saved_old = filename + "_old.txt"
+save_config_to = open(save_files_to + saved_old, "w")
+s = conn.send_command_timing("show running-config")
+save_config_to.write(s)
+save_config_to.close()
+
 ## Function for deleting vlan.dat and config ##
 def delvlandat():
-    conn.send_command_timing("del flash:vlan.dat")
-    conn.send_command_timing("\n")
-    conn.send_command_timing("y")
-    conn.send_command_timing("write erase")
-    conn.send_command_timing("\n")
-    reloadout1 = conn.send_command_timing("reload")
-    if "changes" in reloadout1:
-        conn.send_command_timing("no")
-    else:
-        conn.send_command_timing("\n")
-    print("Switch has been reset and restarted.")
+    conn.send_command("del flash:vlan.dat", expect_string=r'Delete filename')
+    conn.send_command("\n", expect_string=r'Delete')
+    conn.send_command("\n", expect_string=r'#')
 
 
 ## Function for deleting config ##
 def delrunconfig():
     conn.send_command_timing("write erase")
     conn.send_command_timing("\n")
-    reloadout2 = conn.send_command_timing("reload")
-    if "changes" in reloadout2:
+    reload_out = conn.send_command_timing("reload")
+    if "Save?" in reload_out:
         conn.send_command_timing("no")
-    else:
-        conn.send_command_timing("\n")
-    print("Switch has been reset and restarted.")
 
+    conn.send_command_timing("\n")
+    print("Switch has been reset and restarted.")
 
 ## Check and delete vlan.dat file ##
 vlandat = ""
@@ -130,12 +150,14 @@ else:
 if unAuth:
     if vlandat == "vlan.dat":
         delvlandat()
+        delrunconfig()
     else:
         delrunconfig()
         print("Switch was configured but without vlan.dat file.")
 else:
     if vlandat == "vlan.dat":
         delvlandat()
+        delrunconfig()
         print("Switch was configured, but without required login.")
     else:
         delrunconfig()
@@ -198,12 +220,30 @@ conn.send_config_set(config)
 conn.send_command_timing("write memory")
 print("Config is installed and saved with wr mem.")
 
+## Copy inserted config to case map for easier archiving ##
+shutil.copy2(prefix_path + "\\" + configfile, save_files_to + configfile)
+
 ## Save loaded config from the switch for double-checking ##
-save_config_to = open(filename, "w")
+saved_run = filename + "_running.txt"
+saved_dif = filename + "_diference.txt"
+save_config_to = open(save_files_to + saved_run, "w")
 s = conn.send_command_timing("show running-config")
 save_config_to.write(s)
 save_config_to.close()
-print("Config is copied directly from the switch. You can check it in " + filename + ". ")
+print("Config is copied directly from the switch. You can check it in " + saved_run + ". ")
+print("Differences between chosen .conf file and running configuration is saved in: " + saved_dif + ".")
+print("All files are saved in a map with the same name as chosen config file.")
+
+with open(save_files_to + configfile) as file_1:
+    with open(save_files_to + saved_run) as file_2:
+        file_1_line = file_1.readlines()
+        file_2_line = file_2.readlines()
+        d = difflib.Differ()  # compare and just print
+        diff = list(d.compare(file_1_line, file_2_line))
+        dif_f = open(save_files_to + saved_dif, "w")
+        dif_f.write("\n".join(diff))
+
+dif_f.close()
 
 conn.disconnect()
 
