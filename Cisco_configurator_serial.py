@@ -6,6 +6,7 @@ import time
 import os
 import shutil
 import difflib
+import platform
 from netmiko import NetmikoAuthenticationException
 # from paramiko.ssh_exception import AuthenticationException
 # from difflib import Differ
@@ -14,14 +15,19 @@ from netmiko import NetmikoAuthenticationException
 # from pathlib import Path
 # import os.path
 
-i = False
-j = 1
+i = j = k = l = False
+
 
 ## Gather info ## You can remove comment, and select port manually.
 # comport = "COM?"
 
-## Comment next line if you chose COM port manually.
-comport = input("With what serial COM port are you connecting (e.g. COM1/com1): ").upper()
+## Comment out else, if you chose COM port manually.
+if platform.system() == "Linux":
+    comport = "/dev/ttyUSB0"
+else:
+    comport = input("With what serial COM port are you connecting (e.g. COM1/com1): ").upper()
+
+
 filename = input("Name of the config file without format .conf (It's added with code): ").lower()
 configfile = filename + ".conf"
 
@@ -42,15 +48,22 @@ def tryconn():
             "port": comport,
         },
     }
-
     global i
-    try:
-        ConnectHandler(**device)
-    except NetmikoAuthenticationException:
-        print("Wrong login data, try again.")
-    else:
-        print("Password should be correct.")
-        i = True
+    global m
+    m = 0
+    while m <= 5:
+        try:
+            conn = ConnectHandler(**device)
+        except NetmikoAuthenticationException:
+            #print("Wrong login data, try again.")
+            m = m+1
+        else:
+            print("Password should be correct.")
+            i = True
+            m = 6
+
+if l == 6:
+    print("Wrong login data, try again.")
 
 ## Change Auth data ## You can enter UN/PW info here. ##
 unAuth = ""
@@ -75,15 +88,21 @@ while i is False:
 ## Option to save newly generated files to unique directory ##
 
 prefix_path = os.getcwd()
-prefix_path_case = prefix_path + "\\" + filename
+sign = ""
+if platform.system() == "Linux":
+    sign = "/"
+else:
+    sign = "\\"
+
+prefix_path_case = prefix_path + sign + filename
 
 while os.path.exists(prefix_path_case):
     new_filename = filename + str(j)
-    prefix_path_case = prefix_path + "\\" + new_filename
+    prefix_path_case = prefix_path + sign + new_filename
     j = j + 1
 
 os.mkdir(prefix_path_case)
-save_files_to = prefix_path_case + "\\"
+save_files_to = prefix_path_case + sign
 
 ## Device info for connection ##
 device = {
@@ -104,10 +123,23 @@ device = {
 
 ## Connect to device & enable ##
 print("Connecting...")
-conn = ConnectHandler(**device)
-print("Connected")
-if not conn.check_enable_mode():
-    conn.enable()
+#if l == 6:
+    #print("Wrong login data, try again.")
+
+while l <= 5:
+    try:
+        ConnectHandler(**device)
+    except NetmikoAuthenticationException:
+        #print("Wrong login data, try again.")
+        l = l+1
+    else:
+        #conn = ConnectHandler(**device)
+        conn = ConnectHandler(**device)
+        print("Connected")
+        if not conn.check_enable_mode():
+            conn.enable()
+        l = 6
+
 
 ## Save old config ##
 saved_old = filename + "_old.txt"
@@ -169,12 +201,22 @@ conn.disconnect()
 t = time.localtime()
 current_time = time.strftime("%H:%M:%S", t)
 print("Time of restart is ", current_time)
-print("The restart will take 5 minutes.")
-time.sleep(300)
+print("The restart will take around 5 minutes.")
+time.sleep(230)
 
 ## After reset there is no Auth data ##
 unAuth = ""
 pwAuth = ""
+
+## Test if switch is already online ##
+while k is False:
+    try:
+        ConnectHandler(**device)
+    except NetmikoAuthenticationException:
+        time.sleep(30)
+    else:
+        k = True
+
 
 ## Connect to device & enable ##
 print("Connecting...")
@@ -221,7 +263,7 @@ conn.send_command_timing("write memory")
 print("Config is installed and saved with wr mem.")
 
 ## Copy inserted config to case map for easier archiving ##
-shutil.copy2(prefix_path + "\\" + configfile, save_files_to + configfile)
+shutil.copy2(prefix_path + sign + configfile, save_files_to + configfile)
 
 ## Save loaded config from the switch for double-checking ##
 saved_run = filename + "_running.txt"
